@@ -2,18 +2,24 @@ package db
 
 import (
 	"log"
+	"os"
 
 	"mis-finanzas/models"
 
-	"github.com/glebarez/sqlite"
+	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
 
 var DB *gorm.DB
 
 func Init() {
+	dsn := os.Getenv("MYSQL_DSN")
+	if dsn == "" {
+		log.Fatal("Variable de entorno MYSQL_DSN no configurada")
+	}
+
 	var err error
-	DB, err = gorm.Open(sqlite.Open("finanzas.db"), &gorm.Config{})
+	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatal("Error al abrir la base de datos:", err)
 	}
