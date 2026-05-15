@@ -4,8 +4,8 @@ import "time"
 
 type User struct {
 	ID        uint      `json:"id" gorm:"primaryKey"`
-	GoogleID  string    `json:"google_id" gorm:"uniqueIndex"`
-	Email     string    `json:"email" gorm:"uniqueIndex"`
+	GoogleID  string    `json:"google_id" gorm:"uniqueIndex;size:255"`
+	Email     string    `json:"email" gorm:"uniqueIndex;size:255"`
 	Name      string    `json:"name"`
 	Picture   string    `json:"picture"`
 	Role      string    `json:"role" gorm:"default:user"`
