@@ -10,8 +10,9 @@ import (
 )
 
 func GetDebts(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var debts []models.Debt
-	db.DB.Find(&debts)
+	db.DB.Where("user_id = ?", userID).Find(&debts)
 	if debts == nil {
 		debts = []models.Debt{}
 	}
@@ -19,19 +20,22 @@ func GetDebts(c *gin.Context) {
 }
 
 func CreateDebt(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var d models.Debt
 	if err := c.ShouldBindJSON(&d); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	d.UserID = userID
 	db.DB.Create(&d)
 	c.JSON(http.StatusCreated, d)
 }
 
 func UpdateDebt(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	id := c.Param("id")
 	var d models.Debt
-	if err := db.DB.First(&d, id).Error; err != nil {
+	if err := db.DB.Where("user_id = ? AND id = ?", userID, id).First(&d).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "deuda no encontrada"})
 		return
 	}
@@ -50,7 +54,8 @@ func UpdateDebt(c *gin.Context) {
 }
 
 func DeleteDebt(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	id := c.Param("id")
-	db.DB.Delete(&models.Debt{}, id)
+	db.DB.Where("user_id = ? AND id = ?", userID, id).Delete(&models.Debt{})
 	c.JSON(http.StatusOK, gin.H{"message": "eliminado"})
 }

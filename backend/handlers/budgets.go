@@ -10,8 +10,9 @@ import (
 )
 
 func GetBudgets(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var budgets []models.Budget
-	db.DB.Find(&budgets)
+	db.DB.Where("user_id = ?", userID).Find(&budgets)
 	if budgets == nil {
 		budgets = []models.Budget{}
 	}
@@ -19,14 +20,15 @@ func GetBudgets(c *gin.Context) {
 }
 
 func SaveBudget(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var b models.Budget
 	if err := c.ShouldBindJSON(&b); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	// upsert por categoría
+	b.UserID = userID
 	var existing models.Budget
-	result := db.DB.Where("category = ?", b.Category).First(&existing)
+	result := db.DB.Where("user_id = ? AND category = ?", userID, b.Category).First(&existing)
 	if result.Error == nil {
 		existing.Limit = b.Limit
 		db.DB.Save(&existing)
@@ -38,7 +40,8 @@ func SaveBudget(c *gin.Context) {
 }
 
 func DeleteBudget(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	id := c.Param("id")
-	db.DB.Delete(&models.Budget{}, id)
+	db.DB.Where("user_id = ? AND id = ?", userID, id).Delete(&models.Budget{})
 	c.JSON(http.StatusOK, gin.H{"message": "eliminado"})
 }

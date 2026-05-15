@@ -5,6 +5,7 @@ import (
 
 	"mis-finanzas/db"
 	"mis-finanzas/handlers"
+	"mis-finanzas/middleware"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -12,18 +13,34 @@ import (
 
 func main() {
 	db.Init()
+	handlers.InitOAuth()
 
 	r := gin.Default()
 
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+
 	r.Use(cors.New(cors.Config{
-		AllowAllOrigins:  true,
+		AllowOrigins:     []string{frontendURL, "http://localhost:5173"},
 		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Origin", "Content-Type", "Accept"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Accept", "Authorization"},
 		AllowCredentials: false,
 	}))
 
-	api := r.Group("/api")
+	// Rutas públicas (OAuth)
+	auth := r.Group("/api/auth")
 	{
+		auth.GET("/google", handlers.GoogleLogin)
+		auth.GET("/google/callback", handlers.GoogleCallback)
+	}
+
+	// Rutas protegidas
+	api := r.Group("/api", middleware.Auth())
+	{
+		api.GET("/me", handlers.GetMe)
+
 		api.GET("/transactions", handlers.GetTransactions)
 		api.POST("/transactions", handlers.CreateTransaction)
 		api.DELETE("/transactions/:id", handlers.DeleteTransaction)
@@ -41,6 +58,14 @@ func main() {
 		api.POST("/debts", handlers.CreateDebt)
 		api.PUT("/debts/:id", handlers.UpdateDebt)
 		api.DELETE("/debts/:id", handlers.DeleteDebt)
+	}
+
+	// Rutas de admin
+	admin := r.Group("/api/admin", middleware.Auth(), middleware.AdminOnly())
+	{
+		admin.GET("/users", handlers.AdminGetUsers)
+		admin.PUT("/users/:id", handlers.AdminUpdateUser)
+		admin.DELETE("/users/:id", handlers.AdminDeleteUser)
 	}
 
 	port := os.Getenv("PORT")

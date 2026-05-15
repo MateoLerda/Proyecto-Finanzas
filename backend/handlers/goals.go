@@ -10,8 +10,9 @@ import (
 )
 
 func GetGoals(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var goals []models.Goal
-	db.DB.Find(&goals)
+	db.DB.Where("user_id = ?", userID).Find(&goals)
 	if goals == nil {
 		goals = []models.Goal{}
 	}
@@ -19,19 +20,22 @@ func GetGoals(c *gin.Context) {
 }
 
 func CreateGoal(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	var g models.Goal
 	if err := c.ShouldBindJSON(&g); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	g.UserID = userID
 	db.DB.Create(&g)
 	c.JSON(http.StatusCreated, g)
 }
 
 func UpdateGoal(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	id := c.Param("id")
 	var g models.Goal
-	if err := db.DB.First(&g, id).Error; err != nil {
+	if err := db.DB.Where("user_id = ? AND id = ?", userID, id).First(&g).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "meta no encontrada"})
 		return
 	}
@@ -48,7 +52,8 @@ func UpdateGoal(c *gin.Context) {
 }
 
 func DeleteGoal(c *gin.Context) {
+	userID := c.MustGet("userID").(uint)
 	id := c.Param("id")
-	db.DB.Delete(&models.Goal{}, id)
+	db.DB.Where("user_id = ? AND id = ?", userID, id).Delete(&models.Goal{})
 	c.JSON(http.StatusOK, gin.H{"message": "eliminado"})
 }
