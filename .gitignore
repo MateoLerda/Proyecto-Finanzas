@@ -1,0 +1,15 @@
+# Backend
+backend/finanzas.db
+backend/*.exe
+backend/*.log
+backend/*.err
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/*.log
+frontend/*.err
+
+# Go
+*.test
