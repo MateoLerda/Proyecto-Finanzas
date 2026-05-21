@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -27,6 +28,104 @@ func InitOAuth() {
 		Scopes:       []string{"openid", "email", "profile"},
 		Endpoint:     google.Endpoint,
 	}
+}
+
+func generateJWT(user models.User) (string, error) {
+	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.Claims{
+		UserID: user.ID,
+		Role:   user.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
+		},
+	})
+	return jwtToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
+}
+
+func firstUserRole() string {
+	var count int64
+	db.DB.Model(&models.User{}).Count(&count)
+	if count == 0 {
+		return "admin"
+	}
+	return "user"
+}
+
+// Register crea una cuenta local con email + contraseña
+func Register(c *gin.Context) {
+	var input struct {
+		Email    string `json:"email" binding:"required,email"`
+		Password string `json:"password" binding:"required,min=6"`
+		Name     string `json:"name" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var existing models.User
+	if err := db.DB.Where("email = ?", input.Email).First(&existing).Error; err == nil {
+		c.JSON(http.StatusConflict, gin.H{"error": "el email ya está registrado"})
+		return
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al procesar contraseña"})
+		return
+	}
+
+	user := models.User{
+		Email:        input.Email,
+		Name:         input.Name,
+		PasswordHash: string(hash),
+		Role:         firstUserRole(),
+	}
+	if err := db.DB.Create(&user).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al crear usuario"})
+		return
+	}
+
+	signed, err := generateJWT(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al generar token"})
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"token": signed})
+}
+
+// LoginLocal autentica una cuenta local con email + contraseña
+func LoginLocal(c *gin.Context) {
+	var input struct {
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := db.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "credenciales inválidas"})
+		return
+	}
+
+	if user.PasswordHash == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "esta cuenta usa Google. Iniciá sesión con Google"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(input.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "credenciales inválidas"})
+		return
+	}
+
+	signed, err := generateJWT(user)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al generar token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"token": signed})
 }
 
 func GoogleLogin(c *gin.Context) {
@@ -64,14 +163,10 @@ func GoogleCallback(c *gin.Context) {
 	var user models.User
 	result := db.DB.Where("google_id = ?", info.ID).First(&user)
 	if result.Error != nil {
-		var count int64
-		db.DB.Model(&models.User{}).Count(&count)
-		role := "user"
-		if count == 0 {
-			role = "admin"
-		}
+		role := firstUserRole()
+		gid := info.ID
 		user = models.User{
-			GoogleID: info.ID,
+			GoogleID: &gid,
 			Email:    info.Email,
 			Name:     info.Name,
 			Picture:  info.Picture,
@@ -84,14 +179,7 @@ func GoogleCallback(c *gin.Context) {
 		db.DB.Save(&user)
 	}
 
-	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, &middleware.Claims{
-		UserID: user.ID,
-		Role:   user.Role,
-		RegisteredClaims: jwt.RegisteredClaims{
-			ExpiresAt: jwt.NewNumericDate(time.Now().Add(7 * 24 * time.Hour)),
-		},
-	})
-	signed, err := jwtToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
+	signed, err := generateJWT(user)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "fallo al generar token"})
 		return

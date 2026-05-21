@@ -3,13 +3,14 @@ package models
 import "time"
 
 type User struct {
-	ID        uint      `json:"id" gorm:"primaryKey"`
-	GoogleID  string    `json:"google_id" gorm:"uniqueIndex;size:255"`
-	Email     string    `json:"email" gorm:"uniqueIndex;size:255"`
-	Name      string    `json:"name"`
-	Picture   string    `json:"picture"`
-	Role      string    `json:"role" gorm:"default:user"`
-	CreatedAt time.Time `json:"created_at"`
+	ID           uint      `json:"id" gorm:"primaryKey"`
+	GoogleID     *string   `json:"google_id,omitempty" gorm:"uniqueIndex;size:255"`
+	Email        string    `json:"email" gorm:"uniqueIndex;size:255"`
+	Name         string    `json:"name"`
+	Picture      string    `json:"picture"`
+	PasswordHash string    `json:"-" gorm:"size:255"`
+	Role         string    `json:"role" gorm:"default:user"`
+	CreatedAt    time.Time `json:"created_at"`
 }
 
 type Transaction struct {

@@ -29,9 +29,11 @@ func main() {
 		AllowCredentials: false,
 	}))
 
-	// Rutas públicas (OAuth)
+	// Rutas públicas (auth)
 	auth := r.Group("/api/auth")
 	{
+		auth.POST("/register", handlers.Register)
+		auth.POST("/login", handlers.LoginLocal)
 		auth.GET("/google", handlers.GoogleLogin)
 		auth.GET("/google/callback", handlers.GoogleCallback)
 	}
