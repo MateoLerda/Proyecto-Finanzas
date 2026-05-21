@@ -8,8 +8,10 @@ type User struct {
 	Email        string    `json:"email" gorm:"uniqueIndex;size:255"`
 	Name         string    `json:"name"`
 	Picture      string    `json:"picture"`
-	PasswordHash string    `json:"-" gorm:"size:255"`
-	Role         string    `json:"role" gorm:"default:user"`
+	PasswordHash      string `json:"-" gorm:"size:255"`
+	EmailVerified     bool   `json:"email_verified" gorm:"default:false"`
+	VerificationToken string `json:"-" gorm:"size:255"`
+	Role              string `json:"role" gorm:"default:user"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 

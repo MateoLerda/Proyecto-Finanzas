@@ -46,8 +46,7 @@ export function AuthProvider({ children }) {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(data.error || 'Error al registrarse')
-    localStorage.setItem('token', data.token)
-    await fetchMe(data.token)
+    return data.message
   }
 
   async function login(email, password) {

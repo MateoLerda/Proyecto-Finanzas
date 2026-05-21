@@ -2,8 +2,13 @@ package handlers
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"time"
 
@@ -50,7 +55,56 @@ func firstUserRole() string {
 	return "user"
 }
 
-// Register crea una cuenta local con email + contraseña
+func generateToken() string {
+	b := make([]byte, 32)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func sendVerificationEmail(to, link string) error {
+	host := os.Getenv("SMTP_HOST")
+	port := os.Getenv("SMTP_PORT")
+	user := os.Getenv("SMTP_USER")
+	pass := os.Getenv("SMTP_PASS")
+
+	if host == "" || user == "" || pass == "" {
+		log.Printf("[VERIFY] link de verificación (sin SMTP configurado): %s", link)
+		return nil
+	}
+	if port == "" {
+		port = "587"
+	}
+
+	body := fmt.Sprintf(`<html><body style="font-family:sans-serif;max-width:480px;margin:0 auto;padding:32px">
+<h2 style="color:#1a1a1a">Confirmá tu cuenta</h2>
+<p style="color:#555">Hacé clic en el botón para activar tu cuenta en <strong>Mis Finanzas</strong>:</p>
+<a href="%s" style="display:inline-block;background:#1a1a1a;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;margin:16px 0">
+  Confirmar cuenta
+</a>
+<p style="color:#aaa;font-size:13px;margin-top:24px">Si no creaste esta cuenta, ignorá este email.</p>
+</body></html>`, link)
+
+	msg := []byte(
+		"From: " + user + "\r\n" +
+			"To: " + to + "\r\n" +
+			"Subject: Confirmá tu cuenta — Mis Finanzas\r\n" +
+			"MIME-Version: 1.0\r\n" +
+			"Content-Type: text/html; charset=UTF-8\r\n" +
+			"\r\n" + body,
+	)
+
+	auth := smtp.PlainAuth("", user, pass, host)
+	return smtp.SendMail(host+":"+port, auth, user, []string{to}, msg)
+}
+
+func backendURL(c *gin.Context) string {
+	scheme := "https"
+	if c.GetHeader("X-Forwarded-Proto") != "https" && c.Request.TLS == nil {
+		scheme = "http"
+	}
+	return scheme + "://" + c.Request.Host
+}
+
 func Register(c *gin.Context) {
 	var input struct {
 		Email    string `json:"email" binding:"required,email"`
@@ -74,26 +128,83 @@ func Register(c *gin.Context) {
 		return
 	}
 
+	token := generateToken()
 	user := models.User{
-		Email:        input.Email,
-		Name:         input.Name,
-		PasswordHash: string(hash),
-		Role:         firstUserRole(),
+		Email:             input.Email,
+		Name:              input.Name,
+		PasswordHash:      string(hash),
+		Role:              firstUserRole(),
+		EmailVerified:     false,
+		VerificationToken: token,
 	}
 	if err := db.DB.Create(&user).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al crear usuario"})
 		return
 	}
 
-	signed, err := generateJWT(user)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "error al generar token"})
-		return
+	link := backendURL(c) + "/api/auth/verify?token=" + token
+	if err := sendVerificationEmail(input.Email, link); err != nil {
+		log.Printf("Error enviando email a %s: %v", input.Email, err)
 	}
-	c.JSON(http.StatusCreated, gin.H{"token": signed})
+
+	c.JSON(http.StatusCreated, gin.H{"message": "Revisá tu email para confirmar tu cuenta"})
 }
 
-// LoginLocal autentica una cuenta local con email + contraseña
+func VerifyEmail(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token requerido"})
+		return
+	}
+
+	var user models.User
+	if err := db.DB.Where("verification_token = ?", token).First(&user).Error; err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "token inválido o expirado"})
+		return
+	}
+
+	user.EmailVerified = true
+	user.VerificationToken = ""
+	db.DB.Save(&user)
+
+	frontendURL := os.Getenv("FRONTEND_URL")
+	if frontendURL == "" {
+		frontendURL = "http://localhost:5173"
+	}
+	c.Redirect(http.StatusTemporaryRedirect, frontendURL+"?verified=true")
+}
+
+func ResendVerification(c *gin.Context) {
+	var input struct {
+		Email string `json:"email" binding:"required,email"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var user models.User
+	if err := db.DB.Where("email = ?", input.Email).First(&user).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{"message": "Si el email existe, recibirás el link"})
+		return
+	}
+	if user.EmailVerified {
+		c.JSON(http.StatusOK, gin.H{"message": "La cuenta ya está verificada"})
+		return
+	}
+
+	token := generateToken()
+	user.VerificationToken = token
+	db.DB.Save(&user)
+
+	link := backendURL(c) + "/api/auth/verify?token=" + token
+	if err := sendVerificationEmail(user.Email, link); err != nil {
+		log.Printf("Error reenviando email a %s: %v", user.Email, err)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Email reenviado"})
+}
+
 func LoginLocal(c *gin.Context) {
 	var input struct {
 		Email    string `json:"email" binding:"required"`
@@ -112,6 +223,11 @@ func LoginLocal(c *gin.Context) {
 
 	if user.PasswordHash == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "esta cuenta usa Google. Iniciá sesión con Google"})
+		return
+	}
+
+	if !user.EmailVerified {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "necesitás confirmar tu email antes de ingresar", "unverified": true})
 		return
 	}
 
@@ -166,11 +282,12 @@ func GoogleCallback(c *gin.Context) {
 		role := firstUserRole()
 		gid := info.ID
 		user = models.User{
-			GoogleID: &gid,
-			Email:    info.Email,
-			Name:     info.Name,
-			Picture:  info.Picture,
-			Role:     role,
+			GoogleID:      &gid,
+			Email:         info.Email,
+			Name:          info.Name,
+			Picture:       info.Picture,
+			Role:          role,
+			EmailVerified: true,
 		}
 		db.DB.Create(&user)
 	} else {

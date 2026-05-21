@@ -36,6 +36,8 @@ func main() {
 	{
 		auth.POST("/register", handlers.Register)
 		auth.POST("/login", handlers.LoginLocal)
+		auth.GET("/verify", handlers.VerifyEmail)
+		auth.POST("/resend-verification", handlers.ResendVerification)
 		auth.GET("/google", handlers.GoogleLogin)
 		auth.GET("/google/callback", handlers.GoogleCallback)
 	}
