@@ -29,6 +29,8 @@ func main() {
 		AllowCredentials: false,
 	}))
 
+	r.GET("/health", func(c *gin.Context) { c.JSON(200, gin.H{"status": "ok"}) })
+
 	// Rutas públicas (auth)
 	auth := r.Group("/api/auth")
 	{
