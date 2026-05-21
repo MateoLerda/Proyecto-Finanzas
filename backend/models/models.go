@@ -27,7 +27,7 @@ type Transaction struct {
 type Budget struct {
 	ID       uint    `json:"id" gorm:"primaryKey"`
 	UserID   uint    `json:"user_id"`
-	Category string  `json:"category"`
+	Category string  `json:"category" gorm:"size:255"`
 	Limit    float64 `json:"limit"`
 }
 
