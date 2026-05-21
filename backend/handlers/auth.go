@@ -46,14 +46,6 @@ func generateJWT(user models.User) (string, error) {
 	return jwtToken.SignedString([]byte(os.Getenv("JWT_SECRET")))
 }
 
-func firstUserRole() string {
-	var count int64
-	db.DB.Model(&models.User{}).Count(&count)
-	if count == 0 {
-		return "admin"
-	}
-	return "user"
-}
 
 func generateToken() string {
 	b := make([]byte, 32)
@@ -133,7 +125,7 @@ func Register(c *gin.Context) {
 		Email:             input.Email,
 		Name:              input.Name,
 		PasswordHash:      string(hash),
-		Role:              firstUserRole(),
+		Role:              "user",
 		EmailVerified:     false,
 		VerificationToken: token,
 	}
@@ -279,14 +271,13 @@ func GoogleCallback(c *gin.Context) {
 	var user models.User
 	result := db.DB.Where("google_id = ?", info.ID).First(&user)
 	if result.Error != nil {
-		role := firstUserRole()
 		gid := info.ID
 		user = models.User{
 			GoogleID:      &gid,
 			Email:         info.Email,
 			Name:          info.Name,
 			Picture:       info.Picture,
-			Role:          role,
+			Role:          "user",
 			EmailVerified: true,
 		}
 		db.DB.Create(&user)

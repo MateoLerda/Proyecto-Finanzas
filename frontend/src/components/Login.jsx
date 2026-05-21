@@ -163,11 +163,6 @@ export default function Login() {
           Continuar con Google
         </a>
 
-        {mode === 'register' && (
-          <p style={{ textAlign: 'center', fontSize: 12, color: '#9ca3af', marginTop: 16, lineHeight: 1.5 }}>
-            El primer usuario registrado obtiene rol de <strong>admin</strong>.
-          </p>
-        )}
       </div>
     </div>
   )
